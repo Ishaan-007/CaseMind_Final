@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "840510625229",
+    "project_id": "investigation-assistant",
+    "storage_bucket": "investigation-assistant.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:840510625229:android:c0569ba67b58f291632084",
+        "android_client_info": {
+          "package_name": "com.example.investigation_assistant_app_frontend"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6xhmVQWzuMnEFKR4fXpMoL3Eft5x2ECs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
