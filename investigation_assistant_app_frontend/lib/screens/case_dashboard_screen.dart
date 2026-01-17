@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:investigation_assistant_app_frontend/screens/case_graph_screen.dart';
 import 'package:investigation_assistant_app_frontend/screens/evidence_tab_screen.dart';
 import 'package:investigation_assistant_app_frontend/screens/timeline_screen.dart';
 import 'package:investigation_assistant_app_frontend/screens/upload_fir_screen.dart';
 
-class CaseDashboardScreen extends StatelessWidget {
+class CaseDashboardScreen extends StatefulWidget {
   final String caseId;
   final String caseName;
   final String caseDocId;
@@ -19,9 +23,89 @@ class CaseDashboardScreen extends StatelessWidget {
     required this.caseSummary,
   });
 
+  @override
+  State<CaseDashboardScreen> createState() => _CaseDashboardScreenState();
+}
+
+class _CaseDashboardScreenState extends State<CaseDashboardScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  String? _generatedSummary;
+  bool _isLoadingSummary = true;
+
   static const Color headerBlue1 = Color(0xFF1D4ED8);
   static const Color headerBlue2 = Color(0xFF0B1220);
   static const Color surfaceBg = Color(0xFFF6F7FB);
+
+  @override
+  void initState() {
+    super.initState();
+    _generateSummaryFromFIRs();
+  }
+
+  Future<void> _generateSummaryFromFIRs() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        setState(() => _isLoadingSummary = false);
+        return;
+      }
+
+      // Fetch all FIRs for this case
+      final firsSnapshot = await _firestore
+          .collection("officers")
+          .doc(user.uid)
+          .collection("cases")
+          .doc(widget.caseDocId)
+          .collection("firs")
+          .get();
+
+      if (firsSnapshot.docs.isEmpty) {
+        setState(() {
+          _generatedSummary = widget.caseSummary;
+          _isLoadingSummary = false;
+        });
+        return;
+      }
+
+      // Extract all case data from FIRs
+      Map<String, dynamic> caseData = {};
+      for (var doc in firsSnapshot.docs) {
+        final firData = doc.data();
+        if (firData.containsKey('apiResponse')) {
+          caseData.addAll(firData['apiResponse'] as Map<String, dynamic>);
+        }
+      }
+
+      // Generate summary from case data using AI
+      final summaryText = _generateSummaryText(caseData);
+
+      setState(() {
+        _generatedSummary = summaryText;
+        _isLoadingSummary = false;
+      });
+    } catch (e) {
+      print("Error generating summary: $e");
+      setState(() {
+        _generatedSummary = widget.caseSummary;
+        _isLoadingSummary = false;
+      });
+    }
+  }
+
+  String _generateSummaryText(Map<String, dynamic> caseData) {
+    // Extract case_summary directly from the API response
+    if (caseData.containsKey('case_summary')) {
+      final summary = caseData['case_summary'];
+      if (summary != null && summary.toString().isNotEmpty) {
+        return summary.toString();
+      }
+    }
+
+    // Fall back to default if case_summary not found
+    return "Review FIR details, verify evidence, and build a consistent timeline for court readiness.";
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +117,11 @@ class CaseDashboardScreen extends StatelessWidget {
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const KhojMitraChatScreen()),
+            MaterialPageRoute(
+              builder: (_) => KhojMitraChatScreen(
+                caseDocId: widget.caseDocId,
+              ),
+            ),
           );
         },
       ),
@@ -65,7 +153,7 @@ class CaseDashboardScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            caseId,
+                            widget.caseId,
                             style: GoogleFonts.poppins(
                               color: Colors.white.withOpacity(0.95),
                               fontWeight: FontWeight.w800,
@@ -73,7 +161,7 @@ class CaseDashboardScreen extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            caseName,
+                            widget.caseName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.poppins(
@@ -119,7 +207,10 @@ class CaseDashboardScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         // Case Summary box with glowing bulb
-                        _CaseSummaryCard(summary: caseSummary),
+                        _CaseSummaryCard(
+                          summary: _generatedSummary ?? widget.caseSummary,
+                          isLoading: _isLoadingSummary,
+                        ),
 
                         const SizedBox(height: 18),
 
@@ -144,9 +235,9 @@ class CaseDashboardScreen extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => UploadFirScreen(
-                                  caseId: caseId,
-                                  caseName: caseName,
-                                  caseDocId: caseDocId,
+                                  caseId: widget.caseId,
+                                  caseName: widget.caseName,
+                                  caseDocId: widget.caseDocId,
                                 ),
                               ),
                             );
@@ -159,7 +250,7 @@ class CaseDashboardScreen extends StatelessWidget {
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => EvidenceTabScreen(caseId: caseId, caseName: caseName),
+                              builder: (_) => EvidenceTabScreen(caseId: widget.caseId, caseName: widget.caseName),
                             ),
                           ),
                         ),
@@ -172,8 +263,8 @@ class CaseDashboardScreen extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => TimelineScreen(
-                                  caseId: caseId,
-                                  caseName: caseName,
+                                  caseId: widget.caseId,
+                                  caseName: widget.caseName,
                                 ),
                               ),
                             );
@@ -186,62 +277,7 @@ class CaseDashboardScreen extends StatelessWidget {
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => CaseGraphScreen(graphJson: {
-  "nodes": [
-    { "id": "CASE002", "type": "Case" },
-
-    { "id": "Ayesha Khan", "type": "Person" },
-    { "id": "Ravi Sharma", "type": "Person" },
-    { "id": "Inspector Patil", "type": "Person" },
-
-    { "id": "Andheri Station", "type": "Location" },
-    { "id": "Platform 3", "type": "Location" },
-
-    { "id": "iPhone 13", "type": "Object" },
-    { "id": "IMEI 356938035643809", "type": "Identifier" },
-
-    { "id": "EVID010_CCTV", "type": "Evidence" },
-    { "id": "EVID011_Bill", "type": "Evidence" },
-    { "id": "EVID012_WitnessAudio", "type": "Evidence" },
-
-    { "id": "Event_Theft", "type": "Event" },
-    { "id": "Event_SuspectSeen", "type": "Event" },
-
-    { "id": "Time_19_40", "type": "Time" },
-    { "id": "Time_19_45", "type": "Time" }
-  ],
-
-  "edges": [
-    { "source": "Ayesha Khan", "target": "CASE002", "relation": "IS_VICTIM_OF" },
-    { "source": "Ravi Sharma", "target": "CASE002", "relation": "IS_SUSPECT_IN" },
-    { "source": "Inspector Patil", "target": "CASE002", "relation": "INVESTIGATES" },
-
-    { "source": "Andheri Station", "target": "CASE002", "relation": "IS_LOCATION_OF_INCIDENT" },
-    { "source": "Platform 3", "target": "Andheri Station", "relation": "PART_OF" },
-
-    { "source": "Ayesha Khan", "target": "iPhone 13", "relation": "OWNS" },
-    { "source": "iPhone 13", "target": "IMEI 356938035643809", "relation": "HAS_IMEI" },
-
-    { "source": "EVID010_CCTV", "target": "Ravi Sharma", "relation": "SHOWS_PERSON" },
-    { "source": "EVID010_CCTV", "target": "Platform 3", "relation": "RECORDED_AT" },
-
-    { "source": "EVID011_Bill", "target": "iPhone 13", "relation": "DOCUMENTS_OWNERSHIP_FOR" },
-    { "source": "EVID011_Bill", "target": "Ayesha Khan", "relation": "REGISTERS_TO" },
-
-    { "source": "EVID012_WitnessAudio", "target": "Event_SuspectSeen", "relation": "SUPPORTS_EVENT" },
-
-    { "source": "Event_SuspectSeen", "target": "Time_19_40", "relation": "OCCURRED_AT" },
-    { "source": "Event_SuspectSeen", "target": "Ravi Sharma", "relation": "INVOLVES_PERSON" },
-    { "source": "Event_SuspectSeen", "target": "Platform 3", "relation": "AT_LOCATION" },
-
-    { "source": "Event_Theft", "target": "Time_19_45", "relation": "OCCURRED_AT" },
-    { "source": "Event_Theft", "target": "Ayesha Khan", "relation": "INVOLVES_PERSON" },
-    { "source": "Event_Theft", "target": "iPhone 13", "relation": "INVOLVES_OBJECT" },
-    { "source": "Event_Theft", "target": "CASE002", "relation": "PART_OF_CASE" },
-
-    { "source": "EVID010_CCTV", "target": "Event_Theft", "relation": "SUPPORTS_EVENT" }
-  ]
-},),
+                              builder: (_) => CaseGraphScreen(),
                             ),
                           ),
                         ),
@@ -277,8 +313,12 @@ class CaseDashboardScreen extends StatelessWidget {
 
 class _CaseSummaryCard extends StatelessWidget {
   final String summary;
+  final bool isLoading;
 
-  const _CaseSummaryCard({required this.summary});
+  const _CaseSummaryCard({
+    required this.summary,
+    this.isLoading = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -340,15 +380,40 @@ class _CaseSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  summary,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13.2,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+                if (isLoading)
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Generating summary...",
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.2,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    summary,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.2,
+                      height: 1.35,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -484,7 +549,12 @@ class _KhojMitraFab extends StatelessWidget {
 // ------------------- Chat Screen (Functional) -------------------
 
 class KhojMitraChatScreen extends StatefulWidget {
-  const KhojMitraChatScreen({super.key});
+  final String caseDocId;
+
+  const KhojMitraChatScreen({
+    super.key,
+    required this.caseDocId,
+  });
 
   @override
   State<KhojMitraChatScreen> createState() => _KhojMitraChatScreenState();
@@ -492,6 +562,8 @@ class KhojMitraChatScreen extends StatefulWidget {
 
 class _KhojMitraChatScreenState extends State<KhojMitraChatScreen> {
   final TextEditingController _controller = TextEditingController();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   final List<Map<String, String>> _messages = [
     {
@@ -500,21 +572,91 @@ class _KhojMitraChatScreenState extends State<KhojMitraChatScreen> {
     }
   ];
 
-  void _sendMessage() {
+  bool _isLoading = false;
+  final String _qaApiUrl = "http://192.168.124.36:8000/qa/ask";
+
+  Future<Map<String, dynamic>> _fetchCaseData() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception("User not authenticated");
+
+      final firsSnapshot = await _firestore
+          .collection("officers")
+          .doc(user.uid)
+          .collection("cases")
+          .doc(widget.caseDocId)
+          .collection("firs")
+          .get();
+
+      Map<String, dynamic> caseData = {};
+
+      for (var doc in firsSnapshot.docs) {
+        final firData = doc.data();
+        if (firData.containsKey('apiResponse')) {
+          caseData.addAll(firData['apiResponse'] as Map<String, dynamic>);
+        }
+      }
+
+      return caseData.isEmpty ? {"note": "No FIR data available yet"} : caseData;
+    } catch (e) {
+      print("Error fetching case data: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
     setState(() {
       _messages.add({"role": "user", "text": text});
       _controller.clear();
-
-      // Demo response (replace later with your Groq/LLM API)
-      _messages.add({
-        "role": "bot",
-        "text":
-            "Noted. I can help you with FIR sections, timeline, contradictions, and evidence gaps.\n\n(Backend AI response will come here.)"
-      });
+      _isLoading = true;
     });
+
+    try {
+      final caseData = await _fetchCaseData();
+
+      final requestBody = {
+        "case_data": caseData,
+        "question": text,
+      };
+
+      final response = await http.post(
+        Uri.parse(_qaApiUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final answer = responseData["answer"] ?? "No answer received";
+
+        setState(() {
+          _messages.add({
+            "role": "bot",
+            "text": answer,
+          });
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _messages.add({
+            "role": "bot",
+            "text": "Error: Failed to get response (${response.statusCode}). Please try again.",
+          });
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _messages.add({
+          "role": "bot",
+          "text": "Error: $e",
+        });
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -540,8 +682,54 @@ class _KhojMitraChatScreenState extends State<KhojMitraChatScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(14),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_isLoading ? 1 : 0),
               itemBuilder: (context, index) {
+                // Show loading indicator
+                if (_isLoading && index == _messages.length) {
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.06),
+                            blurRadius: 12,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue.shade700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Thinking...",
+                            style: GoogleFonts.poppins(
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 final msg = _messages[index];
                 final isUser = msg["role"] == "user";
 

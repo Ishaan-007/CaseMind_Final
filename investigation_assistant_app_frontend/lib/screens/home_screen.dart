@@ -288,12 +288,12 @@ class _CaseDrawer extends StatelessWidget {
                     title: "Court Narrative",
                     icon: Icons.article_outlined,
                     onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const CourtNarrativeScreen()),
-                      );
+                      // Navigator.pop(context);
+                      // Navigator.push(
+                      //   context,
+                      //   MaterialPageRoute(
+                      //       builder: (_) => const CourtNarrativeScreen()),
+                      // );
                     },
                   ),
                 ],
@@ -760,17 +760,17 @@ class SimulatorScreen extends StatelessWidget {
   }
 }
 
-class CourtNarrativeScreen extends StatelessWidget {
-  const CourtNarrativeScreen({super.key});
+// class CourtNarrativeScreen extends StatelessWidget {
+//   const CourtNarrativeScreen({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Court Narrative")),
-      body: const Center(child: Text("Court Narrative Screen")),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       appBar: AppBar(title: const Text("Court Narrative")),
+//       body: const Center(child: Text("Court Narrative Screen")),
+//     );
+//   }
+// }
 
 class InvestigationPlanScreen extends StatelessWidget {
   const InvestigationPlanScreen({super.key});
